@@ -1,0 +1,91 @@
+const { expect } = require("chai");
+const { ethers } = require("hardhat");
+
+describe("Voting System Contract", function () {
+  let VotingSystem;
+  let votingSystem;
+  let owner;
+  let addr1;
+  let addr2;
+
+  beforeEach(async function () {
+    VotingSystem = await ethers.getContractFactory("votingSystem");
+    [owner, addr1, addr2, _] = await ethers.getSigners();
+    votingSystem = await VotingSystem.deploy();
+    await votingSystem.deployed();
+  });
+
+  it("Should mint tokens to the specified address", async function () {
+    await votingSystem.mint(addr1.address, 1000);
+    const balance = await votingSystem.balanceOf(addr1.address);
+    expect(balance).to.equal(1000);
+  });
+
+  it("Should submit a proposal", async function () {
+    await votingSystem.connect(addr1).submitProposal("Proposal 1 Description");
+    
+    
+    const proposal = await votingSystem.getProposal(1);
+    expect(proposal.proposer).to.equal(addr1.address);
+    expect(proposal.description).to.equal("Proposal 1 Description");
+    expect(proposal.yesVotes).to.equal(0);
+    expect(proposal.noVotes).to.equal(0);
+  });
+
+  it("Should allow a user with tokens to vote yes", async function () {
+
+    await votingSystem.mint(addr1.address, 100);
+    
+
+    await votingSystem.connect(addr1).submitProposal("Proposal 2 Description");
+    
+
+    await votingSystem.connect(addr1).vote(2, true);
+    
+
+    const proposal = await votingSystem.getProposal(2);
+    expect(proposal.yesVotes).to.equal(1);
+    expect(proposal.noVotes).to.equal(0);
+  });
+
+  it("Should not allow voting if user has no tokens", async function () {
+
+    await votingSystem.connect(addr1).submitProposal("Proposal 3 Description");
+
+    await expect(votingSystem.connect(addr2).vote(3, true)).to.be.revertedWith("You must own tokens to vote");
+  });
+
+  it("Should emit ProposalApproved event after 6 yes votes", async function () {
+
+    await votingSystem.mint(addr1.address, 100);
+    await votingSystem.mint(addr2.address, 100);
+    
+
+    await votingSystem.connect(addr1).submitProposal("Proposal 4 Description");
+    
+
+    await votingSystem.connect(addr1).vote(4, true);
+    await votingSystem.connect(addr2).vote(4, true);
+    
+ 
+    for (let i = 0; i < 4; i++) {
+      await votingSystem.mint(owner.address, 100);
+      await votingSystem.vote(4, true);
+    }
+
+   
+    await expect(votingSystem.connect(addr1).vote(4, true))
+      .to.emit(votingSystem, "ProposalApproved")
+      .withArgs(4, "Proposal 4 Description", 6, 0);
+  });
+
+  it("Should not allow double voting", async function () {
+    await votingSystem.mint(addr1.address, 100);
+
+    await votingSystem.connect(addr1).submitProposal("Proposal 5 Description");
+
+    await votingSystem.connect(addr1).vote(5, true);
+
+    await expect(votingSystem.connect(addr1).vote(5, true)).to.be.revertedWith("You have already voted");
+  });
+});
